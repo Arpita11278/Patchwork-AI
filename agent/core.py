@@ -75,12 +75,35 @@ class PatchworkAgent:
         print("\n" + "="*50)
         print("🛑 HUMAN-IN-THE-LOOP APPROVAL REQUIRED")
         print("="*50)
+
         choice = input("Do you want to approve this fix and create a Pull Request? (y/n): ").strip().lower()
         return choice == 'y'
 
+    def scan_repository_files(self, directory_path: str):
+        """Phase 2: Scan local repository files for analysis"""
+        print(f"🔍 Scanning files in directory: {directory_path}...")
+        code_files = []
+        
+        try:
+            for root, dirs, files in os.walk(directory_path):
+                # Ignore hidden folders like .git or __pycache__
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                
+                for file in files:
+                    if file.endswith(('.py', '.js', '.ts', '.java', '.cpp')):
+                        full_path = os.path.join(root, file)
+                        code_files.append(full_path)
+                        
+            print(f"✅ Found {len(code_files)} source code files for analysis.")
+            return code_files
+        except Exception as e:
+            print(f"❌ Error scanning directory: {e}")
+            return []
+
     def process_repository(self, repo_path: str):
         print(f"📂 Processing repository path: {repo_path}")
-        
+        # Step 0: Scan files
+        scanned_files = self.scan_repository_files(repo_path)
         # Optional: Test GitHub connection first
         self.fetch_github_repo("Arpita11278/Patchwork-AI")
         
