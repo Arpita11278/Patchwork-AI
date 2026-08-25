@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 import subprocess
+import requests
 
 load_dotenv()
 
@@ -8,11 +9,34 @@ class PatchworkAgent:
     def __init__(self):
         print("🤖 Patchwork AI Agent initialized.")
         self.api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
+        self.github_token = os.getenv("GITHUB_TOKEN")
         
         if not self.api_key:
             print("⚠️ Warning: API Key not found!")
         else:
             print("✅ API Key loaded.")
+
+    def fetch_github_repo(self, repo_name: str):
+        """Phase 1: Fetch repository details from GitHub API"""
+        print(f"🌐 Connecting to GitHub for repository: {repo_name}...")
+        url = f"https://api.github.com/repos/{repo_name}"
+        headers = {}
+        if self.github_token:
+            headers["Authorization"] = f"Bearer {self.github_token}"
+            
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                repo_data = response.json()
+                print(f"✅ Successfully connected to GitHub repo: {repo_data.get('full_name')}")
+                print(f"⭐ Stars: {repo_data.get('stargazers_count')} | 🍴 Forks: {repo_data.get('forks_count')}")
+                return True
+            else:
+                print(f"❌ Failed to fetch repo from GitHub. Status Code: {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"❌ GitHub API Error: {e}")
+            return False
 
     def run_in_sandbox(self, code_snippet: str):
         print("🛡️ Running code in TrueForge Sandbox...")
@@ -56,6 +80,9 @@ class PatchworkAgent:
 
     def process_repository(self, repo_path: str):
         print(f"📂 Processing repository path: {repo_path}")
+        
+        # Optional: Test GitHub connection first
+        self.fetch_github_repo("Arpita11278/Patchwork-AI")
         
         verified_code = """
 def calculate_sum(a, b):
