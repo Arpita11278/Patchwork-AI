@@ -121,6 +121,34 @@ class PatchworkAgent:
                 
         print(f"✅ Code analysis complete. Found {len(issues)} potential improvements.")
         return issues
+
+    def generate_and_apply_patch(self, file_path: str, issue_description: str):
+        """Phase 4: Generate an automated patch/fix for detected code issues"""
+        print(f"🛠️ Generating patch for {file_path} due to: {issue_description}...")
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                
+            # Simple automated patching logic for demonstration
+            patch_applied = False
+            if "print(" in issue_description:
+                # Example: Replace print statements with logging placeholder or clean up
+                # For safety in prototype, we log the patch action
+                print(f"💡 Patch suggestion: Replace print() with logging framework in {file_path}")
+                patch_applied = True
+                
+            if patch_applied:
+                print(f"✅ Successfully generated and simulated patch for {file_path}.")
+                return True
+            else:
+                print(f"⚠️ No automatic patch rule matched for this issue.")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error generating patch: {e}")
+            return False
+        
     def process_repository(self, repo_path: str):
         print(f"📂 Processing repository path: {repo_path}")
         # Step 0: Scan files
@@ -128,6 +156,10 @@ class PatchworkAgent:
 
         # Step 1: Analyze scanned files for quality issues
         quality_issues = self.analyze_code_quality(scanned_files)
+
+        # Step 2: Generate patches for detected quality issues
+        for issue in quality_issues:
+            self.generate_and_apply_patch(issue["file"], issue["issue"])
         
         # Optional: Test GitHub connection first
         self.fetch_github_repo("Arpita11278/Patchwork-AI")
