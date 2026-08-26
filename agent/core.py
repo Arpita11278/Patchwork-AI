@@ -100,10 +100,35 @@ class PatchworkAgent:
             print(f"❌ Error scanning directory: {e}")
             return []
 
+    def analyze_code_quality(self, file_paths: list):
+        """Phase 3: Analyze code files for basic code smells or issues"""
+        print(f"🔍 Analyzing {len(file_paths)} files for quality issues...")
+        issues = []
+        
+        for file_path in file_paths:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                # Basic rule checks (e.g., looking for print statements or hardcoded keys)
+                if "print(" in content:
+                    issues.append({"file": file_path, "issue": "Found 'print()' statement; consider using proper logging."})
+                if "TODO" in content:
+                    issues.append({"file": file_path, "issue": "Unresolved 'TODO' comment found."})
+                    
+            except Exception as e:
+                print(f"⚠️ Could not read file {file_path}: {e}")
+                
+        print(f"✅ Code analysis complete. Found {len(issues)} potential improvements.")
+        return issues
     def process_repository(self, repo_path: str):
         print(f"📂 Processing repository path: {repo_path}")
         # Step 0: Scan files
         scanned_files = self.scan_repository_files(repo_path)
+
+        # Step 1: Analyze scanned files for quality issues
+        quality_issues = self.analyze_code_quality(scanned_files)
+        
         # Optional: Test GitHub connection first
         self.fetch_github_repo("Arpita11278/Patchwork-AI")
         
