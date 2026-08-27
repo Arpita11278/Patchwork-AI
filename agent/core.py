@@ -7,6 +7,13 @@ import requests
 import json
 
 load_dotenv()
+try:
+    import streamlit as st
+    for k, v in st.secrets.items():
+        if isinstance(v, str):
+            os.environ[k] = v
+except Exception:
+    pass
 
 class PatchworkAgent:
     def __init__(self):

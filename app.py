@@ -6,8 +6,14 @@ import subprocess
 from dotenv import load_dotenv
 from agent.core import PatchworkAgent
 
-# Load environment variables
+# Load environment variables (.env locally or st.secrets on Streamlit Cloud)
 load_dotenv()
+try:
+    for k, v in st.secrets.items():
+        if isinstance(v, str):
+            os.environ[k] = v
+except Exception:
+    pass
 
 # Configure Streamlit page (Dark Theme)
 st.set_page_config(
