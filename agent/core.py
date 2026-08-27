@@ -236,15 +236,12 @@ class PatchworkAgent:
 
         prompt = (
             f"Analyze this code from '{file_path}' for bugs, vulnerabilities, or code smells.\n\n"
-            "Step 1 — Look carefully for REAL correctness issues first: typos in variable/identifier names, "
+            "Step 1 — Look carefully for ALL REAL correctness issues first: typos in variable/identifier names, "
             "undefined variables, off-by-one errors, wrong operators, missing return statements, logic errors, "
-            "unhandled exceptions, or security issues. If you find one, reply with a short 1-sentence description "
-            "of that issue and stop there.\n\n"
-            "Step 2 — Only if there are truly no correctness issues, check for quality/style gaps: missing "
-            "docstrings or comments on non-trivial functions, missing type hints, use of print() instead of "
-            "logging, or duplicated logic. If you find one of these, reply with a short 1-sentence description.\n\n"
-            "Reply with exactly the word 'NONE' only if the code has no correctness issues AND no quality/style "
-            "gaps.\n\n"
+            "iteration over modifying sets, missing dictionary keys (KeyErrors), unhandled exceptions, or security issues.\n"
+            "If you find any, list EACH of them as a separate bullet point (starting with '- ') with a short 1-sentence description.\n\n"
+            "Step 2 — If there are absolutely NO correctness issues, then check for quality/style gaps (e.g. missing docstrings). List them as bullet points if found.\n\n"
+            "Reply with exactly the word 'NONE' ONLY if the code has absolutely no correctness issues AND no quality/style gaps.\n\n"
             f"Code:\n{snippet}"
         )
 
@@ -262,11 +259,12 @@ class PatchworkAgent:
                     return None
                 return result
             else:
-                print(f"⚠️ LLM API Error: {response.text}")
-                return None
+                error_msg = f"API Error {response.status_code}: {response.text}"
+                print(f"⚠️ LLM {error_msg}")
+                return f"API_ERROR: {response.status_code} - {response.text}"
         except Exception as e:
             print(f"⚠️ LLM API Request Failed: {e}")
-            return None
+            return f"API_ERROR: Exception - {str(e)}"
 
     def analyze_code_quality(self, file_paths: list):
         """Phase 3: Analyze code files for issues"""
@@ -304,7 +302,7 @@ class PatchworkAgent:
         if len(content) > self.MAX_ANALYSIS_CHARS * 2:
             print(f"⚠️ File is very large ({len(content)} chars); the fix may be less reliable for content far into the file.")
 
-        prompt = f"Fix the following issue in the code.\nIssue: {issue_description}\n\nReturn ONLY the exact fixed code as plain text. CRITICAL: Maintain the exact original coding style, indentation, and formatting. Do NOT add any AI-like comments explaining the fix (e.g. no 'Here is the fixed code'). Do NOT use markdown code blocks like ```python. Just output the raw code directly so it can overwrite the file.\n\nCode:\n{content}"
+        prompt = f"Fix ALL of the following issues in the code simultaneously.\nIssues:\n{issue_description}\n\nReturn ONLY the exact fully fixed code as plain text. CRITICAL: Maintain the exact original coding style, indentation, and formatting. Do NOT add any AI-like comments explaining the fixes. Do NOT use markdown code blocks like ```python. Just output the raw code directly so it can overwrite the file.\n\nCode:\n{content}"
 
         data = {
             "model": self.model,
@@ -323,9 +321,12 @@ class PatchworkAgent:
                     fixed_code = fixed_code.rsplit("\n", 1)[0]
                 return fixed_code
             else:
-                return None
-        except Exception:
-            return None
+                error_msg = f"API Error {response.status_code}: {response.text}"
+                print(f"⚠️ LLM Fix {error_msg}")
+                return f"API_ERROR: {response.status_code} - {response.text}"
+        except Exception as e:
+            print(f"⚠️ LLM Fix API Request Failed: {e}")
+            return f"API_ERROR: Exception - {str(e)}"
 
     def generate_and_apply_patch(self, file_path: str, issue_description: str, original_content: str):
         """Phase 4: Generate an automated patch/fix and ask for permission to apply"""

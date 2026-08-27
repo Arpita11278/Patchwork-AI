@@ -85,7 +85,7 @@ def cleanup_temp_dir():
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    repo_url = st.text_input("🔗 Enter GitHub Repository URL", placeholder="https://github.com/Arpita11278/Patchwork-AI")
+    repo_url = st.text_input("🔗 Enter GitHub Repository URL", placeholder="https://github.com/username/repository")
 
 with col2:
     st.markdown("<br>", unsafe_allow_html=True)
@@ -119,67 +119,104 @@ with col2:
                     st.code(result.stderr)
                 cleanup_temp_dir()
             else:
-                with st.spinner("🔍 AI is scanning and analyzing your code..."):
+                with st.spinner("🔍 Scanning repository files..."):
                     scanned_files = agent.scan_repository_files(temp_dir)
-                    issues = agent.analyze_code_quality(scanned_files)
                     
-                if not issues:
-                    st.success("✅ No issues found! Your code is perfect.")
+                if not scanned_files:
+                    st.warning("⚠️ No supported source code files (.py, .js, .ts, .java, .cpp) were found in this repository.")
                     cleanup_temp_dir()
                 else:
-                    with st.spinner(f"🛠️ Generating precise AI fixes for {len(issues)} files..."):
-                        for issue in issues:
-                            fixed_code = agent.fix_with_llm(issue["content"], issue["issue"])
-                            if fixed_code and fixed_code != issue["content"]:
-                                st.session_state.proposed_fixes.append({
-                                    "file": issue["file"],
-                                    "issue": issue["issue"],
-                                    "original": issue["content"],
-                                    "fixed": fixed_code
-                                })
-                    st.session_state.analysis_done = True
-                    st.rerun()
+                    with st.spinner(f"🔍 Analyzing {len(scanned_files)} source code files..."):
+                        issues = agent.analyze_code_quality(scanned_files)
+                        
+                    if not issues:
+                        st.success(f"✅ Analyzed {len(scanned_files)} files and no issues were found! Your code is perfectly clean.")
+                        cleanup_temp_dir()
+                    else:
+                        # Check for API Errors first
+                        api_errors = [iss for iss in issues if iss["issue"].startswith("API_ERROR:")]
+                        if api_errors:
+                            st.error("❌ LLM API Error occurred during analysis:")
+                            st.code(api_errors[0]["issue"])
+                            cleanup_temp_dir()
+                        else:
+                            with st.spinner(f"🛠️ Generating precise AI fixes for {len(issues)} files..."):
+                                fix_api_error = None
+                                for issue in issues:
+                                    fixed_code = agent.fix_with_llm(issue["content"], issue["issue"])
+                                    if fixed_code and fixed_code.startswith("API_ERROR:"):
+                                        fix_api_error = fixed_code
+                                        break
+                                    if fixed_code and fixed_code != issue["content"]:
+                                        st.session_state.proposed_fixes.append({
+                                            "file": issue["file"],
+                                            "issue": issue["issue"],
+                                            "original": issue["content"],
+                                            "fixed": fixed_code
+                                        })
+                            
+                            if fix_api_error:
+                                st.error("❌ LLM API Error occurred while generating fixes:")
+                                st.code(fix_api_error)
+                                cleanup_temp_dir()
+                            else:
+                                st.session_state.analysis_done = True
+                                st.rerun()
 
 # Display Results
-if st.session_state.analysis_done and st.session_state.proposed_fixes:
-    st.subheader("⚠️ Detected Issues & Proposed AI Fixes")
-    
-    for i, fix in enumerate(st.session_state.proposed_fixes):
-        relative_path = os.path.relpath(fix["file"], st.session_state.temp_dir)
-        with st.expander(f"📄 {relative_path} - {fix['issue']}", expanded=True):
-            col_orig, col_fix = st.columns(2)
-            with col_orig:
-                st.markdown("**❌ Original Code**")
-                st.code(fix["original"], language="python")
-            with col_fix:
-                st.markdown("**✅ AI Proposed Fix**")
-                st.code(fix["fixed"], language="python")
-                
-    st.markdown("---")
-    st.markdown("### 🛑 Human-in-the-Loop Approval")
-    
-    if st.session_state.pr_error:
-        st.error(st.session_state.pr_error)
-        
-    if st.session_state.pr_url:
-        st.success(f"🎉 **Pull Request Successfully Created!**")
-        st.markdown(f"[👉 Click here to view your PR on GitHub]({st.session_state.pr_url})")
+if st.session_state.analysis_done:
+    if not st.session_state.proposed_fixes:
+        st.warning("⚠️ Analysis completed, but no fixes were generated. The AI may have hit a rate limit during the fix phase.")
     else:
-        if st.button("✅ Approve All Fixes & Create Pull Request"):
-            with st.spinner("📤 Applying fixes and generating Pull Request on GitHub..."):
-                # 1. Apply patches to the local temp files
-                for fix in st.session_state.proposed_fixes:
-                    with open(fix["file"], 'w', encoding='utf-8') as f:
-                        f.write(fix["fixed"])
+        st.subheader("⚠️ Detected Issues & Proposed AI Fixes")
+        
+        for i, fix in enumerate(st.session_state.proposed_fixes):
+            relative_path = os.path.relpath(fix["file"], st.session_state.temp_dir)
+            
+            # Count the number of issues (roughly by bullet points)
+            issue_lines = [line.strip() for line in fix['issue'].split('\n') if line.strip()]
+            issue_count = len([line for line in issue_lines if line.startswith('-')]) or len(issue_lines)
+            
+            with st.expander(f"📄 {relative_path} — ({issue_count} Issues Detected)", expanded=True):
+                st.markdown(f"### 🔍 AI Analysis Found {issue_count} Issues:")
                 
-                # 2. Create the Pull Request via the agent
-                pr_url, error_msg = agent.create_pull_request(st.session_state.temp_dir, repo_url)
+                # Use standard markdown instead of st.info for better readability in dark mode
+                st.markdown(fix['issue'])
+                st.markdown("---")
                 
-                if pr_url:
-                    st.session_state.pr_url = pr_url
-                    st.session_state.pr_error = None
-                    cleanup_temp_dir()
-                    st.rerun()
-                else:
-                    st.session_state.pr_error = error_msg
-                    st.rerun()
+                col_orig, col_fix = st.columns(2)
+                with col_orig:
+                    st.markdown("**❌ Original Code**")
+                    st.code(fix["original"], language="python")
+                with col_fix:
+                    st.markdown("**✅ AI Proposed Fix**")
+                    st.code(fix["fixed"], language="python")
+                    
+        st.markdown("---")
+        st.markdown("### 🛑 Human-in-the-Loop Approval")
+        
+        if st.session_state.pr_error:
+            st.error(st.session_state.pr_error)
+            
+        if st.session_state.pr_url:
+            st.success(f"🎉 **Pull Request Successfully Created!**")
+            st.markdown(f"[👉 Click here to view your PR on GitHub]({st.session_state.pr_url})")
+        else:
+            if st.button("✅ Approve All Fixes & Create Pull Request"):
+                with st.spinner("📤 Applying fixes and generating Pull Request on GitHub..."):
+                    # 1. Apply patches to the local temp files
+                    for fix in st.session_state.proposed_fixes:
+                        with open(fix["file"], 'w', encoding='utf-8') as f:
+                            f.write(fix["fixed"])
+                    
+                    # 2. Create the Pull Request via the agent
+                    pr_url, error_msg = agent.create_pull_request(st.session_state.temp_dir, repo_url)
+                    
+                    if pr_url:
+                        st.session_state.pr_url = pr_url
+                        st.session_state.pr_error = None
+                        cleanup_temp_dir()
+                        st.rerun()
+                    else:
+                        st.session_state.pr_error = error_msg
+                        st.rerun()
