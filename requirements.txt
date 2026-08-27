@@ -1,4 +1,3 @@
-python-dotenv
-requests
 streamlit
- 
+requests
+python-dotenv
