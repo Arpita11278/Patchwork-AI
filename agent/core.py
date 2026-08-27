@@ -18,7 +18,7 @@ class PatchworkAgent:
         self.model = "gpt-3.5-turbo"
         if os.getenv("OPENROUTER_API_KEY"):
             self.api_url = "https://openrouter.ai/api/v1/chat/completions"
-            self.model = "google/gemini-2.5-flash"  # Fast default for OpenRouter
+            self.model = "openrouter/free"  # Always free, works with 0 credits
 
         if not self.api_key:
             print("⚠️ Warning: API Key not found! Will use basic rule-based checks.")
