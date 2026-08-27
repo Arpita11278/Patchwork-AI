@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import shutil
 import tempfile
 import subprocess
 from dotenv import load_dotenv
@@ -57,9 +58,15 @@ st.title("🤖 Patchwork-AI: Autonomous Engineer")
 st.markdown("**Automated Code Analysis, Bug Fixing, and Pull Request Generation.**")
 st.markdown("---")
 
+# Verify critical environment variables
+api_missing = not os.getenv("OPENAI_API_KEY") and not os.getenv("OPENROUTER_API_KEY")
+if api_missing:
+    st.error("⚠️ API Key not found! Please set OPENAI_API_KEY or OPENROUTER_API_KEY in your .env file.")
+
+# Always initialize a fresh agent so it picks up code changes in core.py
+agent = PatchworkAgent()
+
 # Initialize Session State
-if 'agent' not in st.session_state:
-    st.session_state.agent = PatchworkAgent()
 if 'temp_dir' not in st.session_state:
     st.session_state.temp_dir = None
 if 'analysis_done' not in st.session_state:
@@ -68,6 +75,13 @@ if 'proposed_fixes' not in st.session_state:
     st.session_state.proposed_fixes = []
 if 'pr_url' not in st.session_state:
     st.session_state.pr_url = None
+if 'pr_error' not in st.session_state:
+    st.session_state.pr_error = None
+
+def cleanup_temp_dir():
+    if st.session_state.temp_dir and os.path.exists(st.session_state.temp_dir):
+        shutil.rmtree(st.session_state.temp_dir, ignore_errors=True)
+        st.session_state.temp_dir = None
 
 col1, col2 = st.columns([3, 1])
 with col1:
@@ -75,39 +89,56 @@ with col1:
 
 with col2:
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🚀 Analyze Repository", use_container_width=True):
-        if not repo_url:
-            st.warning("Please enter a valid GitHub URL.")
+    if st.button("🚀 Analyze Repository", use_container_width=True, disabled=api_missing):
+        if not repo_url or not repo_url.startswith("https://github.com/"):
+            st.warning("Please enter a valid GitHub URL starting with 'https://github.com/'.")
         else:
+            # Clean up previous session
+            cleanup_temp_dir()
+            
             # Reset state
             st.session_state.proposed_fixes = []
             st.session_state.analysis_done = False
             st.session_state.pr_url = None
+            st.session_state.pr_error = None
             
             with st.spinner("🌐 Cloning repository securely..."):
                 temp_dir = tempfile.mkdtemp(prefix="patchwork_")
                 st.session_state.temp_dir = temp_dir
-                subprocess.run(["git", "clone", repo_url, temp_dir], capture_output=True, text=True)
                 
-            with st.spinner("🔍 AI is scanning and analyzing your code..."):
-                scanned_files = st.session_state.agent.scan_repository_files(temp_dir)
-                issues = st.session_state.agent.analyze_code_quality(scanned_files)
+                # Clone command
+                result = subprocess.run(
+                    ["git", "clone", repo_url, temp_dir], 
+                    capture_output=True, 
+                    text=True
+                )
                 
-            if not issues:
-                st.success("✅ No issues found! Your code is perfect.")
+            if result.returncode != 0:
+                st.error("❌ Failed to clone repository. Please check the URL and your access permissions.")
+                with st.expander("Show Clone Error"):
+                    st.code(result.stderr)
+                cleanup_temp_dir()
             else:
-                with st.spinner(f"🛠️ Generating precise AI fixes for {len(issues)} files..."):
-                    for issue in issues:
-                        fixed_code = st.session_state.agent.fix_with_llm(issue["content"], issue["issue"])
-                        if fixed_code and fixed_code != issue["content"]:
-                            st.session_state.proposed_fixes.append({
-                                "file": issue["file"],
-                                "issue": issue["issue"],
-                                "original": issue["content"],
-                                "fixed": fixed_code
-                            })
-                st.session_state.analysis_done = True
-                st.rerun()
+                with st.spinner("🔍 AI is scanning and analyzing your code..."):
+                    scanned_files = agent.scan_repository_files(temp_dir)
+                    issues = agent.analyze_code_quality(scanned_files)
+                    
+                if not issues:
+                    st.success("✅ No issues found! Your code is perfect.")
+                    cleanup_temp_dir()
+                else:
+                    with st.spinner(f"🛠️ Generating precise AI fixes for {len(issues)} files..."):
+                        for issue in issues:
+                            fixed_code = agent.fix_with_llm(issue["content"], issue["issue"])
+                            if fixed_code and fixed_code != issue["content"]:
+                                st.session_state.proposed_fixes.append({
+                                    "file": issue["file"],
+                                    "issue": issue["issue"],
+                                    "original": issue["content"],
+                                    "fixed": fixed_code
+                                })
+                    st.session_state.analysis_done = True
+                    st.rerun()
 
 # Display Results
 if st.session_state.analysis_done and st.session_state.proposed_fixes:
@@ -127,6 +158,9 @@ if st.session_state.analysis_done and st.session_state.proposed_fixes:
     st.markdown("---")
     st.markdown("### 🛑 Human-in-the-Loop Approval")
     
+    if st.session_state.pr_error:
+        st.error(st.session_state.pr_error)
+        
     if st.session_state.pr_url:
         st.success(f"🎉 **Pull Request Successfully Created!**")
         st.markdown(f"[👉 Click here to view your PR on GitHub]({st.session_state.pr_url})")
@@ -139,10 +173,13 @@ if st.session_state.analysis_done and st.session_state.proposed_fixes:
                         f.write(fix["fixed"])
                 
                 # 2. Create the Pull Request via the agent
-                pr_url = st.session_state.agent.create_pull_request(st.session_state.temp_dir, repo_url)
+                pr_url, error_msg = agent.create_pull_request(st.session_state.temp_dir, repo_url)
                 
                 if pr_url:
                     st.session_state.pr_url = pr_url
+                    st.session_state.pr_error = None
+                    cleanup_temp_dir()
                     st.rerun()
                 else:
-                    st.error("❌ Failed to create PR. Please check your GITHUB_TOKEN in .env and ensure it has 'repo' permissions.")
+                    st.session_state.pr_error = error_msg
+                    st.rerun()
