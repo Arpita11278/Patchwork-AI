@@ -113,6 +113,7 @@ class PatchworkAgent:
             if response.status_code == 201:
                 pr_url = response.json().get("html_url")
                 print(f"🎉 Pull Request Successfully Created! View here: {pr_url}")
+                return pr_url
             else:
                 print(f"❌ Failed to create PR: {response.text}")
                 # Fallback to master if main fails
@@ -123,11 +124,14 @@ class PatchworkAgent:
                     if response.status_code == 201:
                         pr_url = response.json().get("html_url")
                         print(f"🎉 Pull Request Successfully Created! View here: {pr_url}")
+                        return pr_url
                     else:
                         print(f"❌ Failed again: {response.text}")
+                        return None
                         
         except Exception as e:
             print(f"❌ Error during PR creation: {e}")
+            return None
             
     def run_in_sandbox(self, code_snippet: str):
         print("🛡️ Running code in TrueForge Sandbox...")
