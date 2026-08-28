@@ -278,6 +278,10 @@ class PatchworkAgent:
             "iteration over modifying sets, missing dictionary keys (KeyErrors), unhandled exceptions, or security issues.\n"
             "If you find any, list EACH of them as a separate bullet point (starting with '- ') with a short 1-sentence description.\n\n"
             "Step 2 — If there are absolutely NO correctness issues, then check for quality/style gaps (e.g. missing docstrings). List them as bullet points if found.\n\n"
+            "CRITICAL RULE: Every bullet point must be self-contained and reference ONLY what is literally present in "
+            "the code snippet below. Never assume, quote, or refer to a comment, docstring, or piece of context that "
+            "is not actually visible in this exact snippet — if you catch yourself about to reference something you "
+            "can't point to a specific line for, drop that claim.\n\n"
             "Reply with exactly the word 'NONE' ONLY if the code has absolutely no correctness issues AND no quality/style gaps.\n\n"
             f"Code:\n{snippet}"
         )
