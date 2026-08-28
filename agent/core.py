@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+import time
 from dotenv import load_dotenv
 import subprocess
 import requests
@@ -280,26 +281,37 @@ class PatchworkAgent:
             f"Code:\n{snippet}"
         )
 
-        data = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1,
-            "max_tokens": 1000
-        }
-        try:
-            response = requests.post(self.api_url, headers=headers, json=data, timeout=15)
-            if response.status_code == 200:
-                result = response.json()["choices"][0]["message"]["content"].strip()
-                if result.upper() == "NONE" or "NONE" in result.upper():
-                    return None
-                return result
-            else:
-                error_msg = f"API Error {response.status_code}: {response.text}"
-                print(f"⚠️ LLM {error_msg}")
-                return f"API_ERROR: {response.status_code} - {response.text}"
-        except Exception as e:
-            print(f"⚠️ LLM API Request Failed: {e}")
-            return f"API_ERROR: Exception - {str(e)}"
+        candidate_models = [self.model]
+        if "free" in self.model:
+            candidate_models.extend(["google/gemma-4-31b-it:free", "openrouter/free", "liquid/lfm-2.5-2.6b:free"])
+
+        last_error = "Unknown error"
+        for model_name in candidate_models:
+            data = {
+                "model": model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1,
+                "max_tokens": 1000
+            }
+            for attempt in range(2):
+                try:
+                    response = requests.post(self.api_url, headers=headers, json=data, timeout=45)
+                    if response.status_code == 200:
+                        result = response.json()["choices"][0]["message"]["content"].strip()
+                        if result.upper() == "NONE" or "NONE" in result.upper():
+                            return None
+                        return result
+                    elif response.status_code in (429, 502, 503, 504):
+                        time.sleep(2 * (attempt + 1))
+                        continue
+                    else:
+                        last_error = f"{response.status_code} - {response.text}"
+                        break
+                except Exception as e:
+                    last_error = f"Exception - {str(e)}"
+                    time.sleep(2)
+        
+        return f"API_ERROR: {last_error}"
 
     def analyze_code_quality(self, file_paths: list):
         """Phase 3: Analyze code files for issues"""
@@ -316,6 +328,7 @@ class PatchworkAgent:
                     issue_desc = self.analyze_with_llm(content, file_path)
                     if issue_desc:
                         issues.append({"file": file_path, "issue": issue_desc, "content": content})
+                    time.sleep(0.5)  # Pace requests to avoid rate limits
                 else:
                     # Basic rule checks fallback
                     if "print(" in content:
@@ -341,29 +354,39 @@ class PatchworkAgent:
 
         prompt = f"Fix ALL of the following issues in the code simultaneously.\nIssues:\n{issue_description}\n\nReturn ONLY the exact fully fixed code as plain text. CRITICAL: Maintain the exact original coding style, indentation, and formatting. Do NOT add any AI-like comments explaining the fixes. Do NOT use markdown code blocks like ```python. Just output the raw code directly so it can overwrite the file.\n\nCode:\n{content}"
 
-        data = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.0,
-            "max_tokens": 8000
-        }
-        try:
-            response = requests.post(self.api_url, headers=headers, json=data, timeout=15)
-            if response.status_code == 200:
-                fixed_code = response.json()["choices"][0]["message"]["content"].strip()
-                # Safety strip for markdown code blocks if the model ignores instructions
-                if fixed_code.startswith("```"):
-                    fixed_code = fixed_code.split("\n", 1)[1]
-                if fixed_code.endswith("```"):
-                    fixed_code = fixed_code.rsplit("\n", 1)[0]
-                return fixed_code
-            else:
-                error_msg = f"API Error {response.status_code}: {response.text}"
-                print(f"⚠️ LLM Fix {error_msg}")
-                return f"API_ERROR: {response.status_code} - {response.text}"
-        except Exception as e:
-            print(f"⚠️ LLM Fix API Request Failed: {e}")
-            return f"API_ERROR: Exception - {str(e)}"
+        candidate_models = [self.model]
+        if "free" in self.model:
+            candidate_models.extend(["google/gemma-4-31b-it:free", "openrouter/free", "liquid/lfm-2.5-2.6b:free"])
+
+        last_error = "Unknown error"
+        for model_name in candidate_models:
+            data = {
+                "model": model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,
+                "max_tokens": 8000
+            }
+            for attempt in range(2):
+                try:
+                    response = requests.post(self.api_url, headers=headers, json=data, timeout=45)
+                    if response.status_code == 200:
+                        fixed_code = response.json()["choices"][0]["message"]["content"].strip()
+                        if fixed_code.startswith("```"):
+                            fixed_code = fixed_code.split("\n", 1)[1]
+                        if fixed_code.endswith("```"):
+                            fixed_code = fixed_code.rsplit("\n", 1)[0]
+                        return fixed_code
+                    elif response.status_code in (429, 502, 503, 504):
+                        time.sleep(2 * (attempt + 1))
+                        continue
+                    else:
+                        last_error = f"{response.status_code} - {response.text}"
+                        break
+                except Exception as e:
+                    last_error = f"Exception - {str(e)}"
+                    time.sleep(2)
+
+        return f"API_ERROR: {last_error}"
 
     def generate_and_apply_patch(self, file_path: str, issue_description: str, original_content: str):
         """Phase 4: Generate an automated patch/fix and ask for permission to apply"""
