@@ -52,7 +52,8 @@ class PatchworkAgent:
         self.model = "gpt-3.5-turbo"
         if get_env_or_secret("OPENROUTER_API_KEY"):
             self.api_url = "https://openrouter.ai/api/v1/chat/completions"
-            self.model = get_env_or_secret("OPENROUTER_MODEL") or "openrouter/free"
+            # Use high-performance free coding model by default
+            self.model = get_env_or_secret("OPENROUTER_MODEL") or "minimax/minimax-m3:free"
 
         if not self.api_key:
             print("⚠️ Warning: API Key not found! Will use basic rule-based checks.")
@@ -283,7 +284,9 @@ class PatchworkAgent:
 
         candidate_models = [self.model]
         if "free" in self.model:
-            candidate_models.extend(["google/gemma-4-31b-it:free", "openrouter/free", "liquid/lfm-2.5-2.6b:free"])
+            candidate_models.extend(["minimax/minimax-m3:free", "minimax/minimax-m2.7:free", "nvidia/nemotron-3.5-lightning:free"])
+        # Remove duplicates while preserving order
+        candidate_models = list(dict.fromkeys(candidate_models))
 
         last_error = "Unknown error"
         for model_name in candidate_models:
@@ -356,7 +359,8 @@ class PatchworkAgent:
 
         candidate_models = [self.model]
         if "free" in self.model:
-            candidate_models.extend(["google/gemma-4-31b-it:free", "openrouter/free", "liquid/lfm-2.5-2.6b:free"])
+            candidate_models.extend(["minimax/minimax-m3:free", "minimax/minimax-m2.7:free", "nvidia/nemotron-3.5-lightning:free"])
+        candidate_models = list(dict.fromkeys(candidate_models))
 
         last_error = "Unknown error"
         for model_name in candidate_models:
