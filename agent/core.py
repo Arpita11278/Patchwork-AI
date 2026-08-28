@@ -7,23 +7,49 @@ import requests
 import json
 
 load_dotenv()
-try:
-    import streamlit as st
-    for k, v in st.secrets.items():
-        if isinstance(v, str):
-            os.environ[k] = v
-except Exception:
-    pass
+
+def get_env_or_secret(key, default=None):
+    # 1. Check os.environ
+    if os.getenv(key):
+        return os.getenv(key)
+    if os.getenv(key.lower()):
+        return os.getenv(key.lower())
+    if os.getenv(key.upper()):
+        return os.getenv(key.upper())
+    
+    # 2. Check st.secrets directly for Streamlit Cloud
+    try:
+        import streamlit as st
+        if key in st.secrets:
+            return str(st.secrets[key])
+        if key.lower() in st.secrets:
+            return str(st.secrets[key.lower()])
+        if key.upper() in st.secrets:
+            return str(st.secrets[key.upper()])
+        
+        for section in st.secrets:
+            try:
+                sec_val = st.secrets[section]
+                if hasattr(sec_val, 'get'):
+                    val = sec_val.get(key) or sec_val.get(key.lower()) or sec_val.get(key.upper())
+                    if val:
+                        return str(val)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    
+    return default
 
 class PatchworkAgent:
     def __init__(self):
         print("🤖 Patchwork AI Agent initialized.")
-        self.api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
-        self.github_token = os.getenv("GITHUB_TOKEN")
+        self.api_key = get_env_or_secret("OPENROUTER_API_KEY") or get_env_or_secret("OPENAI_API_KEY")
+        self.github_token = get_env_or_secret("GITHUB_TOKEN")
 
         self.api_url = "https://api.openai.com/v1/chat/completions"
         self.model = "gpt-3.5-turbo"
-        if os.getenv("OPENROUTER_API_KEY"):
+        if get_env_or_secret("OPENROUTER_API_KEY"):
             self.api_url = "https://openrouter.ai/api/v1/chat/completions"
             self.model = "openrouter/free"  # Always free, works with 0 credits
 
@@ -234,7 +260,9 @@ class PatchworkAgent:
     def analyze_with_llm(self, content: str, file_path: str):
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://patchwork-ai.streamlit.app",
+            "X-Title": "Patchwork-AI"
         }
         truncated = len(content) > self.MAX_ANALYSIS_CHARS
         snippet = content[:self.MAX_ANALYSIS_CHARS]
@@ -304,7 +332,9 @@ class PatchworkAgent:
     def fix_with_llm(self, content: str, issue_description: str):
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://patchwork-ai.streamlit.app",
+            "X-Title": "Patchwork-AI"
         }
         if len(content) > self.MAX_ANALYSIS_CHARS * 2:
             print(f"⚠️ File is very large ({len(content)} chars); the fix may be less reliable for content far into the file.")

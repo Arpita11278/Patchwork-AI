@@ -8,12 +8,33 @@ from agent.core import PatchworkAgent
 
 # Load environment variables (.env locally or st.secrets on Streamlit Cloud)
 load_dotenv()
-try:
-    for k, v in st.secrets.items():
-        if isinstance(v, str):
-            os.environ[k] = v
-except Exception:
-    pass
+
+def get_env_or_secret(key, default=None):
+    if os.getenv(key):
+        return os.getenv(key)
+    if os.getenv(key.lower()):
+        return os.getenv(key.lower())
+    if os.getenv(key.upper()):
+        return os.getenv(key.upper())
+    try:
+        if key in st.secrets:
+            return str(st.secrets[key])
+        if key.lower() in st.secrets:
+            return str(st.secrets[key.lower()])
+        if key.upper() in st.secrets:
+            return str(st.secrets[key.upper()])
+        for section in st.secrets:
+            try:
+                sec_val = st.secrets[section]
+                if hasattr(sec_val, 'get'):
+                    val = sec_val.get(key) or sec_val.get(key.lower()) or sec_val.get(key.upper())
+                    if val:
+                        return str(val)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return default
 
 # Configure Streamlit page (Dark Theme)
 st.set_page_config(
@@ -65,9 +86,9 @@ st.markdown("**Automated Code Analysis, Bug Fixing, and Pull Request Generation.
 st.markdown("---")
 
 # Verify critical environment variables
-api_missing = not os.getenv("OPENAI_API_KEY") and not os.getenv("OPENROUTER_API_KEY")
+api_missing = not get_env_or_secret("OPENAI_API_KEY") and not get_env_or_secret("OPENROUTER_API_KEY")
 if api_missing:
-    st.error("⚠️ API Key not found! Please set OPENAI_API_KEY or OPENROUTER_API_KEY in your .env file.")
+    st.error("⚠️ API Key not found! Please set OPENAI_API_KEY or OPENROUTER_API_KEY in your .env file or Streamlit Secrets.")
 
 # Always initialize a fresh agent so it picks up code changes in core.py
 agent = PatchworkAgent()
